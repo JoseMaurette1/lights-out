@@ -1,4 +1,6 @@
-data/
+data/raw/
+data/download.log
+data/interim/*.done
 .venv/
 __pycache__/
 *.pyc
