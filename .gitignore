@@ -1,0 +1,14 @@
+data/
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.DS_Store
+catboost_info/
+LightsOut_code.zip
+
+# internal notes, kept local
+TODO.md
+proposal.txt
+project_notes.md
+reports/midterm_report.md
