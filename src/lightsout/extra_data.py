@@ -131,8 +131,8 @@ def load_iem() -> tuple[pd.DataFrame, pd.DataFrame]:
             stations += [{"station": f["id"], "lon": f["geometry"]["coordinates"][0],
                           "lat": f["geometry"]["coordinates"][1]} for f in js["features"] if f.get("geometry")]
         for f in sorted((C.RAW / "iem").glob(f"{st}_*.csv")):
-            if f.stat().st_size == 0:
-                continue
+            if f.stat().st_size == 0 or not f.open().readline().startswith("station"):
+                continue  # e.g. DC has no ASOS network of its own ("ERROR: Invalid network")
             d = pd.read_csv(f, usecols=cols, na_values=["None", "M", "T"])
             days.append(d)
     sd = pd.concat(days, ignore_index=True)
