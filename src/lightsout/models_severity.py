@@ -99,6 +99,48 @@ def decision_weights(P: np.ndarray, y, classes) -> np.ndarray:
     return best_w
 
 
+HIGH_RECALL_TARGET = 0.5  # operating point: catch at least half of the high-severity outages
+
+
+def high_cutoff(p_high: np.ndarray, y, target: float = HIGH_RECALL_TARGET) -> float:
+    """Largest P(high) threshold whose recall on the high class reaches `target`
+    on the data given (use the 2020 validation year only)."""
+    is_high = np.asarray(y).astype(str) == "high"
+    ps = np.sort(p_high[is_high])[::-1]
+    return float(ps[max(0, int(np.ceil(target * is_high.sum())) - 1)])
+
+
+def predict_with_high_cutoff(P: np.ndarray, classes, t: float) -> np.ndarray:
+    """'high' whenever P(high) >= t, otherwise the more likely of low / medium."""
+    classes = np.asarray(classes)
+    j = list(classes).index("high")
+    rest = P.copy()
+    rest[:, j] = -np.inf
+    out = classes[np.argmax(rest, 1)].astype(object)
+    out[P[:, j] >= t] = "high"
+    return out
+
+
+def operating_table(fit: dict) -> pd.DataFrame:
+    """How well P(high) separates high-severity outages (AUC, average precision)
+    and the recall / precision for 'high' under each decision rule."""
+    from sklearn.metrics import average_precision_score, roc_auc_score
+    j = list(fit["classes"]).index("high")
+    rows = []
+    for split in ("val", "test"):
+        y = fit["truth"][split][CLF_TARGET].astype(str).to_numpy() == "high"
+        p = fit["proba"][split][:, j]
+        r = {"split": split, "high share": y.mean(), "AUC (high vs rest)": roc_auc_score(y, p),
+             "average precision (high)": average_precision_score(y, p)}
+        for col in [c for c in fit["pred"][split].columns if c.startswith("LightGBM") and c.endswith("clf")]:
+            pred = fit["pred"][split][col].astype(str).to_numpy() == "high"
+            name = col.split("|")[0]
+            r[f"{name}: recall high"] = (pred & y).sum() / y.sum()
+            r[f"{name}: precision high"] = (pred & y).sum() / max(pred.sum(), 1)
+        rows.append(r)
+    return pd.DataFrame(rows).set_index("split").T.round(3)
+
+
 def _preprocessor(scale: bool) -> ColumnTransformer:
     num = [SimpleImputer(strategy="median")] + ([StandardScaler()] if scale else [])
     return ColumnTransformer([
@@ -177,6 +219,7 @@ def fit_all(df: pd.DataFrame, refit: bool = True) -> dict:
     pv = _predict(m1, va)
     classes = m1["LightGBM", "clf"].classes_
     w = decision_weights(pv["_proba"], va[CLF_TARGET], classes)
+    t_high = high_cutoff(pv["_proba"][:, list(classes).index("high")], va[CLF_TARGET])
 
     if refit:
         d2 = with_history(df, FINAL_TRAIN_YEARS)
@@ -196,9 +239,10 @@ def fit_all(df: pd.DataFrame, refit: bool = True) -> dict:
             if not k.startswith("_"):
                 f[k] = v
         f["LightGBM (F1-tuned cutoffs)|clf"] = classes[np.argmax(p["_proba"] * w, 1)]
+        f["LightGBM (high-recall cutoff)|clf"] = predict_with_high_cutoff(p["_proba"], classes, t_high)
         pred[split] = f
     return {"models": {"stage1": m1, "final": m2}, "pred": pred, "proba": {"val": pv["_proba"], "test": pt["_proba"]},
-            "classes": classes, "decision_weights": dict(zip(classes, w.round(2))),
+            "classes": classes, "decision_weights": dict(zip(classes, w.round(2))), "high_cutoff": round(t_high, 4),
             "n_iter": {"stage1": {k: m1["LightGBM", k].best_iteration_ for k in ("reg", "clf")}, "final": n_iter},
             "lgb_frames": {"test": _lgb_frame(te, m2["_cats"])}, "truth": {"val": va, "test": te}}
 
