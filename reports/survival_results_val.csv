@@ -1,0 +1,5 @@
+model,C-index,Integrated Brier,median abs error (h),within 2x of actual
+Random (no skill),0.5,,,
+Cox PH,0.696,0.158,,
+Random survival forest,0.689,0.154,,
+LightGBM (log hours),0.714,0.15,3.415,0.574

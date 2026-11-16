@@ -1,0 +1,7 @@
+model,RMSE (log),MAE (log),MAE (pct pts),macro F1,accuracy,recall low,recall medium,recall high
+Baseline (storm type),0.95,0.682,3.284,0.345,0.706,0.993,0.0,0.13
+Linear / logistic,0.87,0.604,3.123,0.516,0.616,0.653,0.491,0.622
+Random forest,0.853,0.578,3.065,0.554,0.713,0.825,0.504,0.322
+LightGBM,0.845,0.562,3.025,0.568,0.731,0.862,0.451,0.358
+LightGBM (F1-tuned cutoffs),,,,0.568,0.726,0.846,0.476,0.364
+LightGBM (high-recall cutoff),,,,0.565,0.718,0.845,0.39,0.5
