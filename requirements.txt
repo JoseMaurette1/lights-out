@@ -20,3 +20,6 @@ nbconvert
 ipykernel
 tabulate
 mapclassify
+openpyxl
+xlrd
+catboost

@@ -17,6 +17,7 @@ import pandas as pd
 
 from . import config as C
 from .eaglei import load_mcc
+from .extra_data import EXTRA_FEATURES
 from .noaa import CATEGORY_PRIORITY
 from .svi import svi_for_years
 
@@ -31,6 +32,7 @@ NUMERIC_FEATURES = [
     "prior_30d_units", "prior_30d_outages", "prior_365d_units", "prior_365d_outages",
     "prior_365d_outage_rate", "prior_365d_log_peak", "any_zone", "log_area",
     *[f"has_{c}" for c in CATEGORY_PRIORITY],
+    *EXTRA_FEATURES,  # weather, station wind and utility data (extra_data.py)
 ]
 HIST_SMOOTHING = 10  # pseudo-observations at the overall mean when encoding history
 PRIOR_LAG = "48h"    # prior_* features skip storms that began < 48 h earlier (outcome not yet known)
@@ -169,6 +171,9 @@ def build() -> pd.DataFrame:
     df = add_history_features(df)
 
     df["svi_quartile"] = pd.qcut(df["svi"], 4, labels=["Q1 (least)", "Q2", "Q3", "Q4 (most)"])
+    extra = C.PROCESSED / "extra_features.parquet"
+    if extra.exists():
+        df = df.merge(pd.read_parquet(extra), on=["episode_id", "fips"], how="left")
     return df
 
 
