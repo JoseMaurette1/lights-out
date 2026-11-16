@@ -5,6 +5,7 @@ polars
 requests
 scikit-learn
 lightgbm
+optuna
 xgboost
 lifelines
 scikit-survival

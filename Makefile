@@ -1,7 +1,7 @@
 PY := .venv/bin/python
 RUN := cd src && ../$(PY) -m
 
-.PHONY: download process models colab-zip all
+.PHONY: download process tune models colab-zip all
 
 download:          ## small datasets only (~110 MB); EAGLE-I is built in Colab
 	$(RUN) lightsout.download
@@ -10,6 +10,9 @@ process:           ## needs data/interim/outage_events_*.parquet (from Colab)
 	$(RUN) lightsout.noaa
 	$(RUN) lightsout.match
 	$(RUN) lightsout.features
+
+tune:              ## hyperparameter search (rolling-origin, several hours); copy winners into models_*.py
+	$(RUN) lightsout.tuning
 
 models:
 	for nb in notebooks/0[1-4]_*.ipynb; do $(PY) -m jupyter nbconvert --to notebook --execute --inplace $$nb; done

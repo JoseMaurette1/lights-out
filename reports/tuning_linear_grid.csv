@@ -1,0 +1,13 @@
+model,param,value,val score (RMSE),val score (macro F1)
+Ridge,alpha,0.01,0.8281,
+Ridge,alpha,0.1,0.8281,
+Ridge,alpha,1.0,0.828,
+Ridge,alpha,10.0,0.8273,
+Ridge,alpha,100.0,0.8256,
+Ridge,alpha,1000.0,0.8251,
+Logistic,C,0.001,,0.5011
+Logistic,C,0.01,,0.5005
+Logistic,C,0.1,,0.5026
+Logistic,C,1.0,,0.5039
+Logistic,C,10.0,,0.5044
+Logistic,C,100.0,,0.5044

@@ -1,0 +1,2 @@
+search,trials,"best val score (mean of 2019, 2020)",learning_rate,num_leaves,min_child_samples,subsample,colsample_bytree,reg_lambda,min_split_gain,cat_smooth,class_weight,accuracy,n_estimators,per_fold
+lgb_clf,25,0.5562,0.0217,15,244,0.5409,0.4391,10.0694,0.2578,7.1713,sqrt_balanced,0.7404,"[1338, 2566]","[0.5486, 0.5637]"
