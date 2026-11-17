@@ -172,6 +172,31 @@ def _read_sheet(z: zipfile.ZipFile, key: str) -> pd.DataFrame:
     return out
 
 
+def _reliability(z: zipfile.ZipFile) -> pd.DataFrame:
+    """Utility reliability by position: the column names change across years (2021 uses a
+    three-row header), but the layout does not. Each utility reports under the IEEE block or,
+    for many cooperatives, only the "Other Standard" block; take IEEE, else Other."""
+    name = next(n for n in z.namelist() if "reliab" in n.lower())
+    raw = pd.read_excel(io.BytesIO(z.read(name)), sheet_name=0, header=None)
+    hdr = next(i for i in range(6) if raw.iloc[i].astype(str).str.contains("Utility Number").any())
+    cols = raw.iloc[hdr].astype(str).tolist()
+    body = raw.iloc[hdr + 1:]
+    num = lambda j: pd.to_numeric(body.iloc[:, j], errors="coerce")
+    saidi = [j for j, c in enumerate(cols) if "SAIDI" in c]
+    cust = [j for j, c in enumerate(cols) if "Customers" in c]
+    out = pd.DataFrame({"uid": pd.to_numeric(body.iloc[:, cols.index("Utility Number")], errors="coerce"),
+                        "state": body.iloc[:, cols.index("State")], "own": body.iloc[:, cols.index("Ownership")]})
+    blocks = [(saidi[0], saidi[1], cust[0])]
+    if len(saidi) >= 5:
+        blocks.append((saidi[3], saidi[4], cust[1] if len(cust) > 1 else cust[0]))
+    for k, (med, nomed, cu) in enumerate(blocks):
+        vals = {"saidi_med": num(med), "saifi_med": num(med + 1), "caidi_med": num(med + 2),
+                "saidi_nomed": num(nomed), "customers": num(cu)}
+        for c, v in vals.items():
+            out[c] = v.to_numpy() if k == 0 else out[c].fillna(pd.Series(v.to_numpy(), index=out.index))
+    return out
+
+
 def load_eia(name_to_fips: pd.DataFrame) -> pd.DataFrame:
     """County-year utility features; row year y describes report year y (use with storm year y+1)."""
     rows = []
@@ -181,16 +206,10 @@ def load_eia(name_to_fips: pd.DataFrame) -> pd.DataFrame:
         year = int(f.stem[-4:])
         z = zipfile.ZipFile(f)
         terr = _read_sheet(z, "Service_Territory")[["Utility Number", "State", "County"]].dropna()
-        rel = _read_sheet(z, "Reliability")
-        keep = {"Utility Number": "uid", "State": "state", "Ownership": "own", "SAIDI With MED": "saidi_med",
-                "SAIFI With MED": "saifi_med", "SAIDI Without MED": "saidi_nomed", "CAIDI With MED": "caidi_med",
-                "Number of Customers": "customers"}
-        rel = rel[[c for c in keep if c in rel.columns]].rename(columns=keep)
-        for c in ["saidi_med", "saifi_med", "saidi_nomed", "caidi_med", "customers"]:
-            if c in rel:
-                rel[c] = pd.to_numeric(rel[c], errors="coerce")
+        rel = _reliability(z)
         rel = rel.dropna(subset=["uid"]).drop_duplicates(["uid", "state"])
         terr = terr.rename(columns={"Utility Number": "uid", "State": "state", "County": "county"})
+        terr["uid"] = pd.to_numeric(terr["uid"], errors="coerce")
         terr["key"] = _norm_county(terr["county"])
         terr = terr.merge(name_to_fips, left_on=["state", "key"], right_on=["state", "key"], how="inner")
         m = terr.merge(rel, on=["uid", "state"], how="left")
