@@ -136,6 +136,10 @@ def load_iem() -> tuple[pd.DataFrame, pd.DataFrame]:
             d = pd.read_csv(f, usecols=cols, na_values=["None", "M", "T"])
             days.append(d)
     sd = pd.concat(days, ignore_index=True)
+    # drop physically impossible readings (sensor faults, 999 missing codes) before taking maxima;
+    # limits sit just above US records (gust ~200 kt, 24 h rain 43 in, 24 h snow 76 in)
+    for col, hi in (("max_wind_gust_kts", 200), ("max_wind_speed_kts", 150), ("precip_in", 45), ("snow_in", 80)):
+        sd.loc[(sd[col] < 0) | (sd[col] > hi), col] = np.nan
     sd["date"] = pd.to_datetime(sd["day"])
     sd = sd.drop(columns="day").drop_duplicates(["station", "date"])
     return sd, pd.DataFrame(stations).drop_duplicates("station")

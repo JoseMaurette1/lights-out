@@ -28,7 +28,7 @@ WX = [c for c in EXTRA_FEATURES if c.startswith("wx_")]
 ASOS = [c for c in EXTRA_FEATURES if c.startswith("asos_")]
 EIA = [c for c in EXTRA_FEATURES if c.startswith("eia_")]
 SETS = {"base": BASE, "+weather (nClimGrid)": BASE + WX, "+wind (ASOS)": BASE + ASOS,
-        "+utility (EIA)": BASE + EIA, "+all": BASE + WX + ASOS + EIA}
+        "+utility (EIA)": BASE + EIA, "+weather+wind": BASE + WX + ASOS, "+all": BASE + WX + ASOS + EIA}
 FAST = dict(learning_rate=0.05, n_estimators=4000, subsample_freq=1, random_state=42, verbose=-1)
 STOP = [lgb.early_stopping(100, verbose=False)]
 
@@ -74,17 +74,19 @@ def survival_run(df, num):
     return V.c_index(va.reset_index(drop=True), -m.predict(Xva))
 
 
-def data_ablation(df) -> pd.DataFrame:
+def data_ablation(df, only=None) -> pd.DataFrame:
     tr, va, _ = S.splits(df)
     rows = []
     for name, num in SETS.items():
+        if only and name not in only:
+            continue
         t0 = time.time()
         sev, *_ = severity_run(tr, va, num)
         rows.append({"features": name, "n features": len(num) + len(CATEGORICAL_FEATURES), **sev,
                      "restoration C-index": survival_run(df, num), "minutes": (time.time() - t0) / 60})
         print(pd.DataFrame(rows).round(4).to_string(), flush=True)
     out = pd.DataFrame(rows).round(4)
-    out.to_csv(C.REPORTS / "experiments_data.csv", index=False)
+    out.to_csv(C.REPORTS / ("experiments_data.csv" if not only else "experiments_data_extra.csv"), index=False)
     return out
 
 
@@ -135,6 +137,6 @@ if __name__ == "__main__":
     df = pd.read_parquet(C.PROCESSED / "model_table.parquet")
     what = sys.argv[1] if len(sys.argv) > 1 else "data"
     if what == "data":
-        print(data_ablation(df).to_string())
+        print(data_ablation(df, sys.argv[2:] or None).to_string())
     else:
         print(model_comparison(df, SETS[sys.argv[2] if len(sys.argv) > 2 else "+all"]).to_string())
