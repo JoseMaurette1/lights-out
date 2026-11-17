@@ -1,0 +1,6 @@
+model,macro F1,accuracy,AUC high,AP high,recall high,RMSE (log)
+LightGBM,0.5809,0.7337,0.8647,0.4186,0.3873,0.8196
+CatBoost,0.5845,0.7296,0.8718,0.4337,0.4092,
+XGBoost,0.5738,0.7397,0.8647,0.412,0.3285,
+LightGBM + CatBoost (average),0.5858,0.7342,0.8712,0.4333,0.4017,
+LightGBM + CatBoost + XGBoost (average),0.5842,0.7386,0.8709,0.4301,0.3744,

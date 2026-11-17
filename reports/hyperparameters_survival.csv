@@ -14,3 +14,9 @@ LightGBM (log hours),colsample_bytree,0.591
 LightGBM (log hours),reg_lambda,0.165
 LightGBM (log hours),min_split_gain,0.472
 LightGBM (log hours),n_estimators,"early stopping on 2020 (patience 100), scaled for refit"
+CatBoost (log hours),learning_rate,0.05
+CatBoost (log hours),depth,6
+CatBoost (log hours),l2_leaf_reg,3
+CatBoost (log hours),random_seed,42
+CatBoost (log hours),iterations,"early stopping on 2020 (patience 100), scaled for refit"
+Ensemble (LightGBM + CatBoost),rule,average of the two predicted log hours

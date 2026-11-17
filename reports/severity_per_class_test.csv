@@ -1,13 +1,13 @@
 ,,precision,recall,F1,n
-LightGBM (argmax),low,0.824,0.878,0.85,45435
-LightGBM (argmax),medium,0.486,0.41,0.445,12958
-LightGBM (argmax),high,0.411,0.328,0.365,4803
-LightGBM (F1-tuned cutoffs),low,0.829,0.863,0.846,45435
-LightGBM (F1-tuned cutoffs),medium,0.474,0.436,0.454,12958
-LightGBM (F1-tuned cutoffs),high,0.407,0.338,0.369,4803
-LightGBM (high-recall cutoff),low,0.828,0.861,0.844,45435
-LightGBM (high-recall cutoff),medium,0.487,0.357,0.412,12958
-LightGBM (high-recall cutoff),high,0.348,0.465,0.398,4803
-Random forest,low,0.828,0.852,0.839,45435
-Random forest,medium,0.456,0.453,0.454,12958
-Random forest,high,0.395,0.295,0.338,4803
+Ensemble (LightGBM + CatBoost),low,0.834,0.873,0.853,45435
+Ensemble (LightGBM + CatBoost),medium,0.488,0.448,0.467,12958
+Ensemble (LightGBM + CatBoost),high,0.438,0.34,0.383,4803
+"Ensemble, F1-tuned cutoffs",low,0.828,0.887,0.856,45435
+"Ensemble, F1-tuned cutoffs",medium,0.502,0.405,0.448,12958
+"Ensemble, F1-tuned cutoffs",high,0.429,0.36,0.392,4803
+"Ensemble, high-recall cutoff",low,0.837,0.865,0.851,45435
+"Ensemble, high-recall cutoff",medium,0.49,0.409,0.446,12958
+"Ensemble, high-recall cutoff",high,0.393,0.443,0.416,4803
+Random forest,low,0.828,0.864,0.846,45435
+Random forest,medium,0.467,0.458,0.463,12958
+Random forest,high,0.422,0.271,0.33,4803

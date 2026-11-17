@@ -1,0 +1,3 @@
+features,n features,macro F1,accuracy,AUC high,AP high,recall high,RMSE (log),restoration C-index,minutes
++weather+wind,56,0.5793,0.7356,0.8659,0.4154,0.374,0.8216,0.722,3.1248
++all,64,0.5809,0.7337,0.8647,0.4186,0.3873,0.8196,0.7204,3.4673

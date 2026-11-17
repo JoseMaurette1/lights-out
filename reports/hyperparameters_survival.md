@@ -1,17 +1,23 @@
-| model                  | hyperparameter    | value                                                   |
-|:-----------------------|:------------------|:--------------------------------------------------------|
-| Cox PH                 | penalizer         | 0.01                                                    |
-| Cox PH                 | l1_ratio          | 0.0                                                     |
-| Random survival forest | n_estimators      | 100                                                     |
-| Random survival forest | min_samples_leaf  | 7                                                       |
-| Random survival forest | max_features      | 0.33                                                    |
-| Random survival forest | max_depth         |                                                         |
-| Random survival forest | max_samples       | 0.43                                                    |
-| LightGBM (log hours)   | learning_rate     | 0.0103                                                  |
-| LightGBM (log hours)   | num_leaves        | 34                                                      |
-| LightGBM (log hours)   | min_child_samples | 11                                                      |
-| LightGBM (log hours)   | subsample         | 0.643                                                   |
-| LightGBM (log hours)   | colsample_bytree  | 0.591                                                   |
-| LightGBM (log hours)   | reg_lambda        | 0.165                                                   |
-| LightGBM (log hours)   | min_split_gain    | 0.472                                                   |
-| LightGBM (log hours)   | n_estimators      | early stopping on 2020 (patience 100), scaled for refit |
+| model                          | hyperparameter    | value                                                   |
+|:-------------------------------|:------------------|:--------------------------------------------------------|
+| Cox PH                         | penalizer         | 0.01                                                    |
+| Cox PH                         | l1_ratio          | 0.0                                                     |
+| Random survival forest         | n_estimators      | 100                                                     |
+| Random survival forest         | min_samples_leaf  | 7                                                       |
+| Random survival forest         | max_features      | 0.33                                                    |
+| Random survival forest         | max_depth         |                                                         |
+| Random survival forest         | max_samples       | 0.43                                                    |
+| LightGBM (log hours)           | learning_rate     | 0.0103                                                  |
+| LightGBM (log hours)           | num_leaves        | 34                                                      |
+| LightGBM (log hours)           | min_child_samples | 11                                                      |
+| LightGBM (log hours)           | subsample         | 0.643                                                   |
+| LightGBM (log hours)           | colsample_bytree  | 0.591                                                   |
+| LightGBM (log hours)           | reg_lambda        | 0.165                                                   |
+| LightGBM (log hours)           | min_split_gain    | 0.472                                                   |
+| LightGBM (log hours)           | n_estimators      | early stopping on 2020 (patience 100), scaled for refit |
+| CatBoost (log hours)           | learning_rate     | 0.05                                                    |
+| CatBoost (log hours)           | depth             | 6                                                       |
+| CatBoost (log hours)           | l2_leaf_reg       | 3                                                       |
+| CatBoost (log hours)           | random_seed       | 42                                                      |
+| CatBoost (log hours)           | iterations        | early stopping on 2020 (patience 100), scaled for refit |
+| Ensemble (LightGBM + CatBoost) | rule              | average of the two predicted log hours                  |

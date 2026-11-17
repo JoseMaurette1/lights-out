@@ -1,4 +1,6 @@
 ,C-index 95% CI
-Cox PH,"[0.672, 0.685]"
-Random survival forest,"[0.658, 0.673]"
-LightGBM (log hours),"[0.695, 0.707]"
+Cox PH,"[0.682, 0.694]"
+Random survival forest,"[0.665, 0.678]"
+LightGBM (log hours),"[0.705, 0.716]"
+CatBoost (log hours),"[0.705, 0.717]"
+Ensemble (LightGBM + CatBoost),"[0.706, 0.717]"

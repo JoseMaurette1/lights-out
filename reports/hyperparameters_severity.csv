@@ -30,6 +30,13 @@ LightGBM classifier,colsample_bytree,0.439
 LightGBM classifier,reg_lambda,10.07
 LightGBM classifier,min_split_gain,0.258
 LightGBM classifier,cat_smooth,7.17
+CatBoost (both),learning_rate,0.06
+CatBoost (both),depth,7
+CatBoost (both),l2_leaf_reg,5
+CatBoost (both),random_seed,42
+CatBoost (both),iterations,"early stopping on 2020 (patience 100), scaled for the refit"
+CatBoost classifier,class_weights,sqrt_balanced
+Ensemble,rule,average of LightGBM and CatBoost predictions (probabilities for classes)
 LightGBM classifier,class_weight,sqrt_balanced
 LightGBM (both),n_estimators,"early stopping on 2020 (patience 100), x1.21 for the 2014-2020 refit"
 LightGBM (both),subsample_freq,1

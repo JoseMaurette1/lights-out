@@ -1,11 +1,15 @@
-|                                               |   val |   test |
-|:----------------------------------------------|------:|-------:|
-| high share                                    | 0.086 |  0.076 |
-| AUC (high vs rest)                            | 0.846 |  0.839 |
-| average precision (high)                      | 0.376 |  0.354 |
-| LightGBM: recall high                         | 0.358 |  0.328 |
-| LightGBM: precision high                      | 0.438 |  0.411 |
-| LightGBM (F1-tuned cutoffs): recall high      | 0.364 |  0.338 |
-| LightGBM (F1-tuned cutoffs): precision high   | 0.428 |  0.407 |
-| LightGBM (high-recall cutoff): recall high    | 0.5   |  0.465 |
-| LightGBM (high-recall cutoff): precision high | 0.368 |  0.348 |
+|                                                                    |   val |   test |
+|:-------------------------------------------------------------------|------:|-------:|
+| high share                                                         | 0.086 |  0.076 |
+| AUC (high vs rest)                                                 | 0.872 |  0.852 |
+| average precision (high)                                           | 0.433 |  0.385 |
+| LightGBM: recall high                                              | 0.379 |  0.332 |
+| LightGBM: precision high                                           | 0.458 |  0.434 |
+| CatBoost: recall high                                              | 0.409 |  0.35  |
+| CatBoost: precision high                                           | 0.459 |  0.426 |
+| Ensemble (LightGBM + CatBoost): recall high                        | 0.397 |  0.34  |
+| Ensemble (LightGBM + CatBoost): precision high                     | 0.468 |  0.438 |
+| Ensemble (LightGBM + CatBoost, F1-tuned cutoffs): recall high      | 0.424 |  0.36  |
+| Ensemble (LightGBM + CatBoost, F1-tuned cutoffs): precision high   | 0.463 |  0.429 |
+| Ensemble (LightGBM + CatBoost, high-recall cutoff): recall high    | 0.5   |  0.443 |
+| Ensemble (LightGBM + CatBoost, high-recall cutoff): precision high | 0.41  |  0.393 |
