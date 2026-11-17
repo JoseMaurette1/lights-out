@@ -47,7 +47,9 @@ RSF_PARAMS = dict(min_samples_leaf=7, max_features=0.33, max_depth=None, max_sam
 RSF_TREES = 100
 LGB_SURV = dict(learning_rate=0.0103, num_leaves=34, min_child_samples=11, subsample=0.643,
                 colsample_bytree=0.591, reg_lambda=0.165, min_split_gain=0.472)
-MODELS = ["Cox PH", "Random survival forest", "LightGBM (log hours)"]
+CB_SURV = dict(learning_rate=0.05, depth=6, l2_leaf_reg=3, random_seed=SEED, verbose=0, thread_count=-1)
+AFT = ["LightGBM (log hours)", "CatBoost (log hours)", "Ensemble (LightGBM + CatBoost)"]  # models on log hours
+MODELS = ["Cox PH", "Random survival forest", *AFT]
 
 
 def survival_frame(df: pd.DataFrame) -> pd.DataFrame:
@@ -71,7 +73,7 @@ def design(df: pd.DataFrame, columns=None, stats=None):
     return X, list(X.columns), stats
 
 
-def _fit_models(tr: pd.DataFrame, Xtr: pd.DataFrame, va=None, Xva=None, lgb_iter=None) -> dict:
+def _fit_models(tr: pd.DataFrame, Xtr: pd.DataFrame, va=None, Xva=None, lgb_iter=None, cb_iter=None) -> dict:
     cph = CoxPHFitter(penalizer=COX_PENALIZER, l1_ratio=COX_L1)
     cph.fit(pd.concat([Xtr, tr[[DURATION, EVENT]]], axis=1), DURATION, EVENT)
     rsf = RandomSurvivalForest(n_estimators=RSF_TREES, **RSF_PARAMS, n_jobs=-1, random_state=SEED)
@@ -83,7 +85,19 @@ def _fit_models(tr: pd.DataFrame, Xtr: pd.DataFrame, va=None, Xva=None, lgb_iter
             callbacks=[lgb.early_stopping(100, verbose=False)])
     else:
         gbm = lgb.LGBMRegressor(n_estimators=lgb_iter, **kw).fit(Xtr, np.log(tr[DURATION]))
-    return {"cph": cph, "rsf": rsf, "gbm": gbm}
+    from catboost import CatBoostRegressor
+    if va is not None:
+        cb = CatBoostRegressor(iterations=5000, od_type="Iter", od_wait=100, **CB_SURV).fit(
+            Xtr, np.log(tr[DURATION]), eval_set=(Xva, np.log(va[DURATION])), use_best_model=True)
+    else:
+        cb = CatBoostRegressor(iterations=cb_iter, **CB_SURV).fit(Xtr, np.log(tr[DURATION]))
+    return {"cph": cph, "rsf": rsf, "gbm": gbm, "cb": cb}
+
+
+def _mu(m: dict, X: pd.DataFrame) -> dict:
+    """Predicted log hours for each model on log restoration time."""
+    g, c = m["gbm"].predict(X), m["cb"].predict(X)
+    return {AFT[0]: g, AFT[1]: c, AFT[2]: (g + c) / 2}
 
 
 def fit_all(df: pd.DataFrame, refit: bool = True) -> dict:
@@ -92,16 +106,18 @@ def fit_all(df: pd.DataFrame, refit: bool = True) -> dict:
     Xtr, cols, stats = design(tr)
     Xva, _, _ = design(va, cols, stats)
     m1 = _fit_models(tr, Xtr, va, Xva)
-    resid = np.log(va[DURATION].to_numpy()) - m1["gbm"].predict(Xva)  # out-of-sample residuals
+    y_va = np.log(va[DURATION].to_numpy())
+    resid = {k: np.sort(y_va - mu) for k, mu in _mu(m1, Xva).items()}  # out-of-sample residuals
 
-    out = {"stage1": m1, "resid": np.sort(resid), "X": {"val": Xva}, "data": {"val": va}}
+    out = {"stage1": m1, "resid": resid, "X": {"val": Xva}, "data": {"val": va}}
     if refit:
         s2 = survival_frame(with_history(df, FINAL_TRAIN_YEARS))
         tr2 = s2[s2["year"].isin(FINAL_TRAIN_YEARS)].reset_index(drop=True)
         te = s2[s2["split"] == "test"].reset_index(drop=True)
         Xtr2, cols2, stats2 = design(tr2)
-        lgb_iter = int(round(m1["gbm"].best_iteration_ * len(tr2) / len(tr)))
-        m2 = _fit_models(tr2, Xtr2, lgb_iter=lgb_iter)
+        scale = len(tr2) / len(tr)
+        m2 = _fit_models(tr2, Xtr2, lgb_iter=int(round(m1["gbm"].best_iteration_ * scale)),
+                         cb_iter=int(round((m1["cb"].get_best_iteration() + 1) * scale)))
         Xte, _, _ = design(te, cols2, stats2)
         out["X"]["train"], out["data"]["train"] = Xtr2, tr2
     else:
@@ -119,24 +135,24 @@ def risk_scores(fit: dict, split: str) -> dict:
     m, X = fit["models_for"][split], fit["X"][split]
     return {"Cox PH": m["cph"].predict_partial_hazard(X).to_numpy(),
             "Random survival forest": m["rsf"].predict(X.to_numpy()),
-            "LightGBM (log hours)": -m["gbm"].predict(X)}
+            **{k: -mu for k, mu in _mu(m, X).items()}}
 
 
-def predicted_hours(fit: dict, split: str) -> np.ndarray:
-    """LightGBM median restoration time in hours (median residual added back)."""
-    m = fit["models_for"][split]
-    return np.exp(m["gbm"].predict(fit["X"][split]) + np.median(fit["resid"]))
+def predicted_hours(fit: dict, split: str, model: str = AFT[2]) -> np.ndarray:
+    """Median restoration time in hours from a log-hours model (median residual added back)."""
+    mu = _mu(fit["models_for"][split], fit["X"][split])[model]
+    return np.exp(mu + np.median(fit["resid"][model]))
 
 
 def survival_curves(fit: dict, split: str, times: np.ndarray) -> dict:
     m, X = fit["models_for"][split], fit["X"][split]
-    mu = m["gbm"].predict(X)
-    r = fit["resid"]
-    # S(t|x) = P(log T > log t) = share of residuals above log t - mu(x)
-    gbm = 1 - np.searchsorted(r, np.log(times)[None, :] - mu[:, None], side="right") / len(r)
-    return {"Cox PH": m["cph"].predict_survival_function(X, times=times).T.to_numpy(),
-            "Random survival forest": np.vstack([fn(times) for fn in m["rsf"].predict_survival_function(X.to_numpy())]),
-            "LightGBM (log hours)": gbm}
+    out = {"Cox PH": m["cph"].predict_survival_function(X, times=times).T.to_numpy(),
+           "Random survival forest": np.vstack([fn(times) for fn in m["rsf"].predict_survival_function(X.to_numpy())])}
+    for k, mu in _mu(m, X).items():
+        r = fit["resid"][k]
+        # S(t|x) = P(log T > log t) = share of residuals above log t - mu(x)
+        out[k] = 1 - np.searchsorted(r, np.log(times)[None, :] - mu[:, None], side="right") / len(r)
+    return out
 
 
 def c_index(d: pd.DataFrame, score: np.ndarray) -> float:
@@ -148,18 +164,20 @@ def results_table(fit: dict, split: str = "test") -> pd.DataFrame:
     tr, d = fit["data"]["train"], fit["data"][split]
     scores = risk_scores(fit, split)
     y_tr = Surv.from_arrays(tr[EVENT].astype(bool), tr[DURATION])
-    y_te = Surv.from_arrays(d[EVENT].astype(bool), d[DURATION])
+    # the Brier score's censoring estimate is fit on training times, so it needs test times below the
+    # longest training time (always true on the full data; guards small samples)
+    ok = (d[DURATION] < tr[DURATION].max()).to_numpy()
+    y_te = Surv.from_arrays(d.loc[ok, EVENT].astype(bool), d.loc[ok, DURATION])
     lo, hi = np.percentile(d.loc[d[EVENT] == 1, DURATION], [5, 80])
     hi = min(hi, tr[DURATION].max() * 0.99, d[DURATION].max() * 0.99)
     times = np.linspace(lo, hi, 30)
     surv = survival_curves(fit, split, times)
-    hours = predicted_hours(fit, split)
     rows = [{"model": "Random (no skill)", "C-index": 0.5}]
     for name, sc in scores.items():
         r = {"model": name, "C-index": c_index(d, sc),
-             "Integrated Brier": integrated_brier_score(y_tr, y_te, surv[name], times)}
-        if name.startswith("LightGBM"):
-            obs = d[DURATION].to_numpy()
+             "Integrated Brier": integrated_brier_score(y_tr, y_te, surv[name][ok], times)}
+        if name in AFT:
+            obs, hours = d[DURATION].to_numpy(), predicted_hours(fit, split, name)
             r["median abs error (h)"] = np.median(np.abs(hours - obs))
             r["within 2x of actual"] = np.mean((hours / obs <= 2) & (obs / hours <= 2))
         rows.append(r)
@@ -191,4 +209,7 @@ def hyperparameter_table() -> pd.DataFrame:
     rows += [("Random survival forest", k, v) for k, v in RSF_PARAMS.items()]
     rows += [("LightGBM (log hours)", k, v) for k, v in LGB_SURV.items()]
     rows += [("LightGBM (log hours)", "n_estimators", "early stopping on 2020 (patience 100), scaled for refit")]
+    rows += [("CatBoost (log hours)", k, v) for k, v in CB_SURV.items() if k not in ("verbose", "thread_count")]
+    rows += [("CatBoost (log hours)", "iterations", "early stopping on 2020 (patience 100), scaled for refit"),
+             ("Ensemble (LightGBM + CatBoost)", "rule", "average of the two predicted log hours")]
     return pd.DataFrame(rows, columns=["model", "hyperparameter", "value"])

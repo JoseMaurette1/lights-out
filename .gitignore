@@ -15,3 +15,4 @@ proposal.txt
 project_notes.md
 reports/midterm_report.md
 reports/final_report.md
+data/processed/pred_*.parquet

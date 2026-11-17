@@ -46,6 +46,9 @@ LGB_CLF = dict(learning_rate=0.0217, num_leaves=15, min_child_samples=244, subsa
                colsample_bytree=0.439, reg_lambda=10.07, min_split_gain=0.258, cat_smooth=7.17)
 LGB_CLF_WEIGHTS = "sqrt_balanced"
 RF_TREES = 300
+# CatBoost (validated on 2020 in experiments.py: averaged with LightGBM it gave the best macro-F1)
+CB_PARAMS = dict(learning_rate=0.06, depth=7, l2_leaf_reg=5, random_seed=SEED, verbose=0, thread_count=-1)
+ENSEMBLE = "Ensemble (LightGBM + CatBoost)"
 
 
 def splits(df: pd.DataFrame):
@@ -132,7 +135,8 @@ def operating_table(fit: dict) -> pd.DataFrame:
         p = fit["proba"][split][:, j]
         r = {"split": split, "high share": y.mean(), "AUC (high vs rest)": roc_auc_score(y, p),
              "average precision (high)": average_precision_score(y, p)}
-        for col in [c for c in fit["pred"][split].columns if c.startswith("LightGBM") and c.endswith("clf")]:
+        for col in [c for c in fit["pred"][split].columns
+                    if c.startswith(("LightGBM", "CatBoost", "Ensemble")) and c.endswith("clf")]:
             pred = fit["pred"][split][col].astype(str).to_numpy() == "high"
             name = col.split("|")[0]
             r[f"{name}: recall high"] = (pred & y).sum() / y.sum()
@@ -153,6 +157,13 @@ def _lgb_frame(df: pd.DataFrame, cats=None) -> pd.DataFrame:
     X = df[NUMERIC_FEATURES + CATEGORICAL_FEATURES].copy()
     for c in CATEGORICAL_FEATURES:
         X[c] = pd.Categorical(X[c], categories=None if cats is None else cats[c])
+    return X
+
+
+def _cb_frame(df: pd.DataFrame) -> pd.DataFrame:
+    X = df[NUMERIC_FEATURES + CATEGORICAL_FEATURES].copy()
+    for c in CATEGORICAL_FEATURES:
+        X[c] = X[c].astype(str)
     return X
 
 
@@ -191,8 +202,30 @@ def _fit_models(tr: pd.DataFrame, va: pd.DataFrame | None, n_iter: dict | None =
         lc = lgb.LGBMClassifier(n_estimators=n_iter["clf"], class_weight=class_weights(ytr_c, LGB_CLF_WEIGHTS),
                                 **LGB_CLF, **kw).fit(Xtr, ytr_c)
     m["LightGBM", "reg"], m["LightGBM", "clf"] = lr, lc
+
+    from catboost import CatBoostClassifier, CatBoostRegressor
+    Xtr_c = _cb_frame(tr)
+    cw = class_weights(ytr_c, LGB_CLF_WEIGHTS)
+    cb_kw = dict(cat_features=CATEGORICAL_FEATURES, **CB_PARAMS)
+    if va is not None:
+        Xva_c, stop_kw = _cb_frame(va), dict(od_type="Iter", od_wait=100)
+        cr = CatBoostRegressor(iterations=5000, loss_function="RMSE", **stop_kw, **cb_kw).fit(
+            Xtr_c, ytr_r, eval_set=(Xva_c, va[REG_TARGET]), use_best_model=True)
+        cc = CatBoostClassifier(iterations=5000, loss_function="MultiClass", class_weights=cw, **stop_kw, **cb_kw).fit(
+            Xtr_c, ytr_c, eval_set=(Xva_c, va[CLF_TARGET].astype(str)), use_best_model=True)
+    else:
+        cr = CatBoostRegressor(iterations=n_iter["cb_reg"], loss_function="RMSE", **cb_kw).fit(Xtr_c, ytr_r)
+        cc = CatBoostClassifier(iterations=n_iter["cb_clf"], loss_function="MultiClass", class_weights=cw,
+                                **cb_kw).fit(Xtr_c, ytr_c)
+    m["CatBoost", "reg"], m["CatBoost", "clf"] = cr, cc
     m["_cats"] = cats
     return m
+
+
+def _best_iters(m: dict) -> dict:
+    return {"reg": m["LightGBM", "reg"].best_iteration_, "clf": m["LightGBM", "clf"].best_iteration_,
+            "cb_reg": m["CatBoost", "reg"].get_best_iteration() + 1,
+            "cb_clf": m["CatBoost", "clf"].get_best_iteration() + 1}
 
 
 def _predict(m: dict, d: pd.DataFrame) -> dict:
@@ -205,9 +238,16 @@ def _predict(m: dict, d: pd.DataFrame) -> dict:
             out[f"{name}|{kind}"] = (p.fillna(fallback) if kind == "reg" else p.astype(object).fillna(fallback)).to_numpy()
         elif name == "LightGBM":
             out[f"{name}|{kind}"] = model.predict(X)
+        elif name == "CatBoost":
+            out[f"{name}|{kind}"] = np.ravel(model.predict(_cb_frame(d)))
         else:
             out[f"{name}|{kind}"] = model.predict(d)
-    out["_proba"] = m["LightGBM", "clf"].predict_proba(X)
+    lc, cc = m["LightGBM", "clf"], m["CatBoost", "clf"]
+    p_lgb = lc.predict_proba(X)
+    p_cb = cc.predict_proba(_cb_frame(d))[:, [list(cc.classes_).index(k) for k in lc.classes_]]
+    out["_proba"] = (p_lgb + p_cb) / 2
+    out[f"{ENSEMBLE}|reg"] = (out["LightGBM|reg"] + out["CatBoost|reg"]) / 2
+    out[f"{ENSEMBLE}|clf"] = lc.classes_[np.argmax(out["_proba"], 1)]
     return out
 
 
@@ -226,7 +266,7 @@ def fit_all(df: pd.DataFrame, refit: bool = True) -> dict:
         tr2 = d2[d2["year"].isin(FINAL_TRAIN_YEARS)].reset_index(drop=True)
         te = d2[d2["split"] == "test"].reset_index(drop=True)
         scale = len(tr2) / len(tr)  # more rows -> proportionally more boosting rounds
-        n_iter = {k: int(round(m1["LightGBM", k].best_iteration_ * scale)) for k in ("reg", "clf")}
+        n_iter = {k: int(round(v * scale)) for k, v in _best_iters(m1).items()}
         m2 = _fit_models(tr2, None, n_iter)
     else:
         m2, n_iter = m1, None
@@ -238,12 +278,12 @@ def fit_all(df: pd.DataFrame, refit: bool = True) -> dict:
         for k, v in p.items():
             if not k.startswith("_"):
                 f[k] = v
-        f["LightGBM (F1-tuned cutoffs)|clf"] = classes[np.argmax(p["_proba"] * w, 1)]
-        f["LightGBM (high-recall cutoff)|clf"] = predict_with_high_cutoff(p["_proba"], classes, t_high)
+        f[f"{ENSEMBLE[:-1]}, F1-tuned cutoffs)|clf"] = classes[np.argmax(p["_proba"] * w, 1)]
+        f[f"{ENSEMBLE[:-1]}, high-recall cutoff)|clf"] = predict_with_high_cutoff(p["_proba"], classes, t_high)
         pred[split] = f
     return {"models": {"stage1": m1, "final": m2}, "pred": pred, "proba": {"val": pv["_proba"], "test": pt["_proba"]},
             "classes": classes, "decision_weights": dict(zip(classes, w.round(2))), "high_cutoff": round(t_high, 4),
-            "n_iter": {"stage1": {k: m1["LightGBM", k].best_iteration_ for k in ("reg", "clf")}, "final": n_iter},
+            "n_iter": {"stage1": _best_iters(m1), "final": n_iter},
             "lgb_frames": {"test": _lgb_frame(te, m2["_cats"])}, "truth": {"val": va, "test": te}}
 
 
@@ -260,7 +300,7 @@ def results_table(fit: dict, split: str = "test") -> pd.DataFrame:
     return pd.DataFrame(rows.values()).set_index("model").round(3)
 
 
-def per_class_table(fit: dict, col: str = "LightGBM|clf", split: str = "test") -> pd.DataFrame:
+def per_class_table(fit: dict, col: str = f"{ENSEMBLE}|clf", split: str = "test") -> pd.DataFrame:
     y = fit["truth"][split][CLF_TARGET].astype(str)
     p, r, f, n = precision_recall_fscore_support(y, fit["pred"][split][col].astype(str), labels=CLASSES)
     return pd.DataFrame({"precision": p, "recall": r, "F1": f, "n": n}, index=CLASSES).round(3)
@@ -312,6 +352,10 @@ def hyperparameter_table() -> pd.DataFrame:
     rows += [("Random forest classifier", "class_weight", "balanced_subsample")]
     rows += [("LightGBM regressor", k, v) for k, v in LGB_REG.items()]
     rows += [("LightGBM classifier", k, v) for k, v in LGB_CLF.items()]
+    rows += [("CatBoost (both)", k, v) for k, v in CB_PARAMS.items() if k not in ("verbose", "thread_count")]
+    rows += [("CatBoost (both)", "iterations", "early stopping on 2020 (patience 100), scaled for the refit"),
+             ("CatBoost classifier", "class_weights", LGB_CLF_WEIGHTS),
+             ("Ensemble", "rule", "average of LightGBM and CatBoost predictions (probabilities for classes)")]
     rows += [("LightGBM classifier", "class_weight", LGB_CLF_WEIGHTS),
              ("LightGBM (both)", "n_estimators", "early stopping on 2020 (patience 100), x1.21 for the 2014-2020 refit"),
              ("LightGBM (both)", "subsample_freq", 1)]
